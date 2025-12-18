@@ -11,29 +11,16 @@
     <style>
         body {
             font-family: 'Inter', 'Noto Sans TC', sans-serif;
-            background-color: #f0f9ff;
+            background-color: #f8fafc;
         }
         .serif-font {
             font-family: 'Noto Serif TC', serif;
         }
-        ::-webkit-scrollbar {
-            width: 6px;
-        }
-        ::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #bae6fd;
-            border-radius: 10px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #7dd3fc;
-        }
         .animate-fade-in {
-            animation: fadeIn 0.5s ease-out;
+            animation: fadeIn 0.4s ease-out forwards;
         }
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
+            from { opacity: 0; transform: translateY(8px); }
             to { opacity: 1; transform: translateY(0); }
         }
     </style>
@@ -50,8 +37,8 @@
 }
 </script>
 </head>
-<body class="bg-sky-50/30 text-slate-900">
-    <div id="root"></div>
+<body class="bg-sky-50/20 text-slate-900 overflow-hidden">
+    <div id="root" class="h-screen"></div>
     <script type="module" src="index.tsx"></script>
 </body>
 </html>

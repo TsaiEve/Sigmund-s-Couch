@@ -21,66 +21,34 @@ const App: React.FC = () => {
 
   const strings = UI_STRINGS[language];
 
-  // Initialize Speech Recognition
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
-      
       recognitionRef.current.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setInput(prev => (prev ? `${prev} ${transcript}` : transcript));
+        setInput(prev => prev + event.results[0][0].transcript);
         setIsRecording(false);
       };
-
       recognitionRef.current.onend = () => setIsRecording(false);
       recognitionRef.current.onerror = () => setIsRecording(false);
     }
   }, []);
 
-  const toggleRecording = () => {
-    if (!recognitionRef.current) {
-      alert(strings.voiceError);
-      return;
-    }
-    if (isRecording) {
-      recognitionRef.current.stop();
-    } else {
-      recognitionRef.current.lang = language === 'zh' ? 'zh-TW' : 'en-US';
-      recognitionRef.current.start();
-      setIsRecording(true);
-    }
-  };
-
   const scrollToBottom = () => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTo({
-        top: scrollRef.current.scrollHeight,
-        behavior: 'smooth'
-      });
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   };
 
   useEffect(() => {
-    scrollToBottom();
+    setTimeout(scrollToBottom, 50);
   }, [messages, isAnalyzing]);
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => setPreviewImage(reader.result as string);
-      reader.readAsDataURL(file);
-    }
-  };
 
   const handleSendMessage = async () => {
     if ((!input.trim() && !previewImage) || isAnalyzing) return;
 
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: `u-${Date.now()}`,
       role: 'user',
       content: input,
       timestamp: new Date(),
@@ -88,186 +56,166 @@ const App: React.FC = () => {
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const currentInput = input;
+    const currentImg = previewImage;
     setInput('');
     setPreviewImage(null);
     setIsAnalyzing(true);
 
     try {
-      const analysis = await geminiService.analyze(input, language, userMessage.imageData);
-      const audioData = await geminiService.generateSpeech(analysis, language, selectedVoice);
-
+      // 1. 文字分析
+      const analysisText = await geminiService.analyze(currentInput, language, currentImg || undefined);
+      
+      // 2. 先建立對話框，不帶音訊
       const analystMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: `a-${Date.now()}`,
         role: 'analyst',
-        content: analysis,
+        content: analysisText,
         timestamp: new Date(),
-        audioData: audioData || undefined
       };
-
       setMessages(prev => [...prev, analystMessage]);
-    } catch (error) {
-      console.error("Conversation failed", error);
-    } finally {
+      setIsAnalyzing(false); // 文字出來後就可以停止 Loading 狀態
+
+      // 3. 非同步嘗試生成音訊
+      geminiService.generateSpeech(analysisText, language, selectedVoice).then(audio => {
+        if (audio) {
+          setMessages(prev => prev.map(m => m.id === analystMessage.id ? { ...m, audioData: audio } : m));
+        }
+      });
+
+    } catch (error: any) {
+      console.error("Chat Error:", error);
+      const errorMessage: Message = {
+        id: `err-${Date.now()}`,
+        role: 'analyst',
+        content: `分析過程中斷了：${error.message || '未知錯誤'}。請檢查網路或 API 設定。`,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
       setIsAnalyzing(false);
     }
   };
 
   return (
-    <div className="flex flex-col h-screen max-w-5xl mx-auto bg-white shadow-2xl overflow-hidden md:border-x border-sky-100">
-      {/* Header */}
-      <header className="px-6 py-5 border-b border-sky-100 flex items-center justify-between bg-white/95 backdrop-blur-md sticky top-0 z-30 shadow-sm">
+    <div className="flex flex-col h-full max-w-5xl mx-auto bg-white shadow-2xl overflow-hidden md:border-x border-sky-100">
+      <header className="px-6 py-4 border-b border-sky-100 flex items-center justify-between bg-white/95 backdrop-blur-md sticky top-0 z-30">
         <div className="flex items-center space-x-4">
-          <div className="w-12 h-12 rounded-2xl bg-sky-500 flex items-center justify-center text-white shadow-xl shadow-sky-100 rotate-2 transform hover:rotate-0 transition-all cursor-pointer">
-            <i className="fa-solid fa-couch text-xl"></i>
+          <div className="w-10 h-10 rounded-xl bg-sky-500 flex items-center justify-center text-white shadow-lg">
+            <i className="fa-solid fa-couch"></i>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-800 tracking-tight serif-font leading-none">{strings.title}</h1>
-            <p className="text-[10px] font-bold text-sky-400 uppercase tracking-[0.2em] mt-1">{strings.subtitle}</p>
+            <h1 className="text-xl font-bold text-slate-800 serif-font leading-tight">{strings.title}</h1>
+            <p className="text-[9px] font-bold text-sky-400 uppercase tracking-widest">{strings.subtitle}</p>
           </div>
         </div>
         
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2">
           <div className="relative">
             <button 
               onClick={() => setShowVoiceSelect(!showVoiceSelect)}
-              className="flex items-center space-x-2 text-xs font-bold px-4 py-2.5 bg-sky-50 text-sky-600 rounded-full hover:bg-sky-100 transition-all border border-sky-100 shadow-sm"
+              className="flex items-center space-x-2 text-[11px] font-bold px-3 py-2 bg-sky-50 text-sky-600 rounded-full border border-sky-100"
             >
-              <i className="fa-solid fa-microphone-lines"></i>
+              <i className="fa-solid fa-microphone-lines text-[10px]"></i>
               <span>{VOICE_OPTIONS.find(v => v.id === selectedVoice)?.[`label_${language}`]}</span>
-              <i className={`fa-solid fa-chevron-down text-[9px] transition-transform ${showVoiceSelect ? 'rotate-180' : ''}`}></i>
             </button>
-            
             {showVoiceSelect && (
-              <div className="absolute right-0 mt-3 w-56 bg-white rounded-3xl shadow-2xl border border-sky-50 overflow-hidden animate-fade-in z-40">
-                <div className="px-5 py-3 bg-sky-50/50 text-[10px] font-bold text-sky-400 uppercase tracking-widest border-b border-sky-50">
-                  {strings.voiceSelect}
-                </div>
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-2xl border border-sky-50 overflow-hidden z-50 animate-fade-in">
                 {VOICE_OPTIONS.map((voice) => (
                   <button
                     key={voice.id}
-                    onClick={() => {
-                      setSelectedVoice(voice.id);
-                      setShowVoiceSelect(false);
-                    }}
-                    className={`w-full text-left px-5 py-3.5 text-sm transition-colors hover:bg-sky-50 flex items-center justify-between ${selectedVoice === voice.id ? 'text-sky-600 font-bold bg-sky-50/30' : 'text-slate-600'}`}
+                    onClick={() => { setSelectedVoice(voice.id); setShowVoiceSelect(false); }}
+                    className="w-full text-left px-4 py-3 text-xs hover:bg-sky-50 transition-colors border-b border-sky-50 last:border-0"
                   >
                     {voice[`label_${language}`]}
-                    {selectedVoice === voice.id && <i className="fa-solid fa-check text-[10px]"></i>}
                   </button>
                 ))}
               </div>
             )}
           </div>
-
           <button 
             onClick={() => setLanguage(prev => prev === 'zh' ? 'en' : 'zh')}
-            className="text-xs font-bold px-4 py-2.5 border-2 border-sky-50 text-sky-600 rounded-full hover:bg-sky-50 hover:border-sky-100 transition-all active:scale-95 shadow-sm"
+            className="text-[11px] font-bold px-3 py-2 border border-sky-100 text-sky-600 rounded-full hover:bg-sky-50"
           >
             {strings.switchLang}
           </button>
         </div>
       </header>
 
-      {/* Messages */}
       <main 
         ref={scrollRef}
-        className="flex-1 overflow-y-auto p-6 md:p-10 space-y-6 bg-gradient-to-b from-sky-50/10 to-white"
+        className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 bg-slate-50/30"
         onClick={() => setShowVoiceSelect(false)}
       >
         {messages.length === 0 && (
-          <div className="h-full flex flex-col items-center justify-center text-center opacity-30 py-32 animate-fade-in">
-            <div className="w-24 h-24 bg-sky-100 rounded-full flex items-center justify-center mb-8">
-               <i className="fa-solid fa-feather-pointed text-sky-400 text-5xl"></i>
-            </div>
-            <p className="max-w-sm serif-font text-xl italic text-slate-700 leading-relaxed">{strings.empty}</p>
+          <div className="h-full flex flex-col items-center justify-center text-center opacity-30 py-20">
+            <i className="fa-solid fa-feather-pointed text-4xl text-sky-300 mb-4"></i>
+            <p className="max-w-xs serif-font text-lg italic">{strings.empty}</p>
           </div>
         )}
         {messages.map((msg) => (
           <ChatBubble key={msg.id} message={msg} language={language} />
         ))}
         {isAnalyzing && (
-          <div className="flex items-center space-x-4 text-sky-400 italic text-sm py-6 ml-4">
-            <div className="flex space-x-2">
-              <div className="w-2.5 h-2.5 bg-sky-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-              <div className="w-2.5 h-2.5 bg-sky-300 rounded-full animate-bounce" style={{ animationDelay: '200ms' }}></div>
-              <div className="w-2.5 h-2.5 bg-sky-300 rounded-full animate-bounce" style={{ animationDelay: '400ms' }}></div>
+          <div className="flex items-center space-x-3 text-sky-400 text-xs font-bold animate-pulse ml-2">
+            <div className="flex space-x-1">
+              <span className="w-1.5 h-1.5 bg-sky-400 rounded-full"></span>
+              <span className="w-1.5 h-1.5 bg-sky-400 rounded-full"></span>
+              <span className="w-1.5 h-1.5 bg-sky-400 rounded-full"></span>
             </div>
-            <span className="font-bold tracking-widest uppercase text-xs">{strings.analyzing}</span>
+            <span>{strings.analyzing}</span>
           </div>
         )}
       </main>
 
-      {/* Input */}
-      <footer className="p-6 md:p-8 border-t border-sky-50 bg-white/80 backdrop-blur-sm shadow-[0_-10px_40px_-15px_rgba(14,165,233,0.1)]">
+      <footer className="p-4 md:p-6 border-t border-sky-50 bg-white">
         {previewImage && (
-          <div className="mb-6 relative inline-block">
-            <img src={previewImage} alt="Preview" className="h-28 w-28 object-cover rounded-2xl border-4 border-white shadow-xl rotate-1" />
-            <button 
-              onClick={() => setPreviewImage(null)}
-              className="absolute -top-3 -right-3 bg-rose-500 text-white rounded-full w-8 h-8 flex items-center justify-center shadow-lg hover:bg-rose-600 transition-all border-2 border-white"
-            >
-              <i className="fa-solid fa-xmark text-sm"></i>
+          <div className="mb-4 relative inline-block">
+            <img src={previewImage} alt="Preview" className="h-20 w-20 object-cover rounded-lg border-2 border-sky-100 shadow-sm" />
+            <button onClick={() => setPreviewImage(null)} className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-lg border border-white">
+              <i className="fa-solid fa-xmark"></i>
             </button>
           </div>
         )}
         
-        <div className="flex items-end space-x-3 bg-slate-100/50 p-2.5 rounded-[2rem] border border-slate-200/60 focus-within:border-sky-300 focus-within:bg-white focus-within:shadow-2xl focus-within:shadow-sky-100/50 transition-all">
-          <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageUpload} />
+        <div className="flex items-end space-x-2 bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/50 focus-within:bg-white focus-within:border-sky-300 transition-all">
+          <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={(e) => {
+             const file = e.target.files?.[0];
+             if (file) {
+               const reader = new FileReader();
+               reader.onloadend = () => setPreviewImage(reader.result as string);
+               reader.readAsDataURL(file);
+             }
+          }} />
           
-          <div className="flex space-x-1 pl-1">
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="w-12 h-12 text-slate-400 hover:text-sky-500 hover:bg-sky-50 rounded-2xl transition-all active:scale-90 flex items-center justify-center"
-              title={strings.image}
-            >
-              <i className="fa-solid fa-camera text-xl"></i>
-            </button>
-
-            <button 
-              onClick={toggleRecording}
-              className={`w-12 h-12 rounded-2xl transition-all active:scale-90 flex items-center justify-center ${
-                isRecording 
-                ? 'text-rose-500 bg-rose-50 animate-pulse' 
-                : 'text-slate-400 hover:text-sky-500 hover:bg-sky-50'
-              }`}
-              title={strings.voiceInput}
-            >
-              <i className={`fa-solid ${isRecording ? 'fa-microphone-lines' : 'fa-microphone'} text-xl`}></i>
-            </button>
+          <div className="flex">
+            <button onClick={() => fileInputRef.current?.click()} className="w-10 h-10 text-slate-400 hover:text-sky-500 rounded-xl flex items-center justify-center"><i className="fa-solid fa-camera"></i></button>
+            <button onClick={() => {
+              if (recognitionRef.current) {
+                if (isRecording) recognitionRef.current.stop();
+                else { recognitionRef.current.lang = language === 'zh' ? 'zh-TW' : 'en-US'; recognitionRef.current.start(); setIsRecording(true); }
+              }
+            }} className={`w-10 h-10 rounded-xl flex items-center justify-center ${isRecording ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`}><i className="fa-solid fa-microphone"></i></button>
           </div>
           
-          <div className="flex-1 relative pb-1">
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                  e.preventDefault();
-                  handleSendMessage();
-                }
-              }}
-              placeholder={isRecording ? strings.listening : strings.placeholder}
-              rows={1}
-              className="w-full resize-none bg-transparent border-none rounded-2xl py-3.5 px-3 focus:ring-0 text-slate-700 text-base outline-none transition-all placeholder:text-slate-400"
-              style={{ minHeight: '48px', maxHeight: '160px' }}
-            />
-          </div>
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSendMessage(); } }}
+            placeholder={strings.placeholder}
+            rows={1}
+            className="flex-1 bg-transparent border-none py-2 px-2 focus:ring-0 text-sm md:text-base outline-none resize-none"
+            style={{ maxHeight: '120px' }}
+          />
 
           <button 
             onClick={handleSendMessage}
             disabled={(!input.trim() && !previewImage) || isAnalyzing}
-            className={`w-14 h-14 rounded-[1.5rem] flex items-center justify-center transition-all ${
-              (!input.trim() && !previewImage) || isAnalyzing
-                ? 'bg-slate-200 text-slate-400'
-                : 'bg-sky-500 text-white shadow-xl shadow-sky-200 hover:bg-sky-600 hover:-translate-y-1'
-            }`}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${(!input.trim() && !previewImage) || isAnalyzing ? 'bg-slate-200 text-slate-400' : 'bg-sky-500 text-white shadow-md hover:bg-sky-600'}`}
           >
-            <i className="fa-solid fa-paper-plane text-lg"></i>
+            <i className="fa-solid fa-paper-plane text-sm"></i>
           </button>
         </div>
-        <p className="text-[10px] text-center text-slate-400 mt-6 uppercase tracking-[0.3em] font-bold opacity-60 px-4">
-          "The interpretation of dreams is the royal road to a knowledge of the unconscious activities of the mind."
-        </p>
+        <p className="text-[10px] text-center text-slate-300 mt-4 font-bold tracking-widest opacity-60">MAKE THE UNCONSCIOUS CONSCIOUS</p>
       </footer>
     </div>
   );

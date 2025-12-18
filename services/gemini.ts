@@ -3,21 +3,16 @@ import { GoogleGenAI, Modality } from "@google/genai";
 import { SYSTEM_INSTRUCTIONS } from "../constants";
 
 export class GeminiService {
-  private ai: any;
-
-  constructor() {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) {
-      console.warn("API Key is missing. Please check your environment variables.");
-    }
-    this.ai = new GoogleGenAI({ apiKey: apiKey || '' });
+  private getAI() {
+    return new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   }
 
   async analyze(prompt: string, language: 'zh' | 'en', imageData?: string) {
+    const ai = this.getAI();
     const model = 'gemini-3-flash-preview';
     const systemInstruction = SYSTEM_INSTRUCTIONS[language];
     
-    const parts: any[] = [{ text: prompt }];
+    const parts: any[] = [{ text: prompt || (imageData ? "請分析這張圖片反映的潛意識象徵。" : "...") }];
     if (imageData) {
       parts.push({
         inlineData: {
@@ -28,37 +23,35 @@ export class GeminiService {
     }
 
     try {
-      const response = await this.ai.models.generateContent({
+      const response = await ai.models.generateContent({
         model,
-        contents: { parts },
+        contents: { parts: parts.length > 0 ? parts : [{ text: "Hello" }] },
         config: {
           systemInstruction,
           temperature: 0.8,
-          topP: 0.95,
         }
       });
-      return response.text;
-    } catch (error) {
-      console.error("Gemini Analysis failed:", error);
-      throw error;
+      return response.text || "抱歉，分析過程中出現了無意識的阻抗，請再試一次。";
+    } catch (error: any) {
+      console.error("Gemini Analysis Error:", error);
+      throw new Error(error?.message || "無法連線至分析核心");
     }
   }
 
   async generateSpeech(text: string, language: 'zh' | 'en', voiceName: string = 'Charon') {
+    const ai = this.getAI();
     let personaPrompt = "";
     
     if (language === 'zh') {
-      const malePersona = "穩重、睿智、帶有親切台灣口音的中年男性心理分析師";
-      const femalePersona = "溫柔、專業、富有同理心的女性心理分析師";
       const isMale = ['Charon', 'Fenrir', 'Puck'].includes(voiceName);
-      const persona = isMale ? malePersona : femalePersona;
-      personaPrompt = `請用一位「${persona}」的語氣，低沈、咬字清晰且溫和地朗讀這段話：${text}`;
+      const persona = isMale ? "穩重、睿智、中年台灣男性心理分析師" : "溫柔、專業、細膩的女性心理分析師";
+      personaPrompt = `請用一位「${persona}」的語氣，低沈溫和地朗讀：${text}`;
     } else {
-      personaPrompt = `Read this as a wise psychoanalyst with a calm and professional voice: ${text}`;
+      personaPrompt = `Wise psychoanalyst voice: ${text}`;
     }
     
     try {
-      const response = await this.ai.models.generateContent({
+      const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
         contents: [{ parts: [{ text: personaPrompt }] }],
         config: {
@@ -71,8 +64,7 @@ export class GeminiService {
         },
       });
 
-      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      return base64Audio;
+      return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || null;
     } catch (error) {
       console.error("Speech generation failed:", error);
       return null;
