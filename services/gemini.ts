@@ -3,18 +3,16 @@ import { GoogleGenAI, Modality } from "@google/genai";
 import { SYSTEM_INSTRUCTIONS } from "../constants";
 
 export class GeminiService {
-  // 直接使用 process.env.API_KEY，不進行複雜的 typeof 檢查，以利建置工具正確替換字串
+  // 依照開發規範，直接使用 process.env.API_KEY 進行初始化。
+  // 這樣做可以確保 Vercel 或其他建置環境能正確識別並替換該字串。
   private getAI() {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) {
-      throw new Error("API Key 尚未生效。請確認 Vercel 設定中的 API_KEY 已儲存並重新部署專案。");
-    }
-    return new GoogleGenAI({ apiKey });
+    return new GoogleGenAI({ apiKey: process.env.API_KEY });
   }
 
   async analyze(prompt: string, language: 'zh' | 'en', imageData?: string) {
     const ai = this.getAI();
-    const model = 'gemini-3-flash-preview';
+    // 心理分析屬於複雜推理任務，升級至 Pro 模型以提供更深度的見解。
+    const model = 'gemini-3-pro-preview';
     const systemInstruction = SYSTEM_INSTRUCTIONS[language];
     
     const parts: any[] = [];
@@ -47,7 +45,11 @@ export class GeminiService {
       return response.text || "潛意識的深度難以言表，請嘗試換個方式分享。";
     } catch (error: any) {
       console.error("Gemini Analysis Error:", error);
-      throw new Error(error?.message || "無法連線至分析核心");
+      // 如果 API Key 真的沒抓到，SDK 會報錯，我們在這裡捕捉。
+      if (error?.message?.includes('API key')) {
+        throw new Error("API Key 設定異常。請確認 Vercel 環境變數名稱為 API_KEY，且您在變更後已執行「Redeploy」。");
+      }
+      throw new Error(error?.message || "無法連線至分析核心，請稍後再試。");
     }
   }
 
