@@ -1,14 +1,13 @@
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { UI_STRINGS } from '../constants';
 
 interface AudioPlayerProps {
   base64Data: string;
   language: 'zh' | 'en';
-  onFinished?: () => void;
 }
 
-const AudioPlayer: React.FC<AudioPlayerProps> = ({ base64Data, language, onFinished }) => {
+const AudioPlayer: React.FC<AudioPlayerProps> = ({ base64Data, language }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
@@ -46,23 +45,23 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ base64Data, language, onFinis
 
   const stopAudio = useCallback(() => {
     if (sourceRef.current) {
-      try {
-        sourceRef.current.stop();
-      } catch (e) {
-        // Source might have already stopped
-      }
+      try { sourceRef.current.stop(); } catch (e) {}
       sourceRef.current = null;
     }
     if (audioCtxRef.current) {
-      audioCtxRef.current.close();
+      audioCtxRef.current.close().catch(() => {});
       audioCtxRef.current = null;
     }
     setIsPlaying(false);
   }, []);
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => stopAudio();
+  }, [stopAudio]);
+
   const playAudio = useCallback(async () => {
     if (!base64Data) return;
-    
     if (isPlaying) {
       stopAudio();
       return;
@@ -84,30 +83,26 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ base64Data, language, onFinis
       source.onended = () => {
         setIsPlaying(false);
         sourceRef.current = null;
-        if (onFinished) onFinished();
       };
       source.start();
     } catch (err) {
       console.error("Audio playback error", err);
       setIsPlaying(false);
     }
-  }, [base64Data, isPlaying, stopAudio, onFinished]);
+  }, [base64Data, isPlaying, stopAudio]);
 
   return (
     <button 
       onClick={playAudio}
-      className={`flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-all shadow-sm border ${
+      className={`flex items-center space-x-2 px-4 py-2 rounded-full text-xs font-bold transition-all shadow-sm border ${
         isPlaying 
-          ? 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100' 
+          ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100' 
           : 'bg-sky-50 text-sky-600 border-sky-100 hover:bg-sky-100'
       } active:scale-95`}
     >
-      <div className="relative flex items-center justify-center w-4 h-4">
+      <div className="flex items-center justify-center w-3 h-3">
         {isPlaying ? (
-          <>
-            <i className="fa-solid fa-square text-[10px] animate-pulse"></i>
-            <span className="absolute inset-0 rounded-full border-2 border-red-200 border-t-red-500 animate-spin opacity-50"></span>
-          </>
+          <i className="fa-solid fa-square text-[10px] animate-pulse"></i>
         ) : (
           <i className="fa-solid fa-play text-[10px] ml-0.5"></i>
         )}
