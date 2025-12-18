@@ -21,7 +21,6 @@ const App: React.FC = () => {
 
   const strings = UI_STRINGS[language];
 
-  // 初始化語音辨識
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -42,7 +41,6 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    // 延遲滾動確保內容已渲染
     const timer = setTimeout(scrollToBottom, 100);
     return () => clearTimeout(timer);
   }, [messages, isAnalyzing]);
@@ -67,7 +65,6 @@ const App: React.FC = () => {
     setIsAnalyzing(true);
 
     try {
-      // 1. 取得文字分析
       const resultText = await geminiService.analyze(currentInput, language, currentImg || undefined);
       
       const analystMessage: Message = {
@@ -77,11 +74,9 @@ const App: React.FC = () => {
         timestamp: new Date(),
       };
       
-      // 立即顯示文字回應
       setMessages(prev => [...prev, analystMessage]);
       setIsAnalyzing(false);
 
-      // 2. 背景生成音訊（不阻塞文字顯示）
       geminiService.generateSpeech(resultText, language, selectedVoice).then(audioData => {
         if (audioData) {
           setMessages(prev => prev.map(m => 
@@ -97,7 +92,7 @@ const App: React.FC = () => {
       const errorMessage: Message = {
         id: `err-${Date.now()}`,
         role: 'analyst',
-        content: `系統發生阻抗：${error.message}。請確認環境變數 API_KEY 是否正確配置。`,
+        content: `分析過程中斷：${error.message}`,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
