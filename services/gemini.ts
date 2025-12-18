@@ -4,40 +4,20 @@ import { SYSTEM_INSTRUCTIONS } from "../constants";
 
 export class GeminiService {
   /**
-   * 獲取 GoogleGenAI 實例。
-   * 這裡會嚴格檢查 Vercel 注入的環境變數。
+   * 根據規範，我們直接使用 process.env.API_KEY。
+   * 如果在部署後仍報錯，請確認 Vercel 的 Environment Variables 頁面中，
+   * 變數名稱是否完全等於 API_KEY（全大寫，無空格）。
    */
-  private getAI() {
-    // 優先嘗試讀取 process.env.API_KEY
-    // 在 Vercel 的 Build step 中，這會被替換為實際的字串
-    const apiKey = process.env.API_KEY;
-
-    if (!apiKey || apiKey === "undefined" || apiKey.trim() === "") {
-      // 如果這行報錯，100% 是因為沒有 Redeploy，或者變數名稱打錯
-      throw new Error(
-        "【找不到金鑰】Vercel 尚未將 API_KEY 注入。請在 Environment Variables 存檔後，回到 Deployments 分頁點擊 'Redeploy'。"
-      );
-    }
-
-    if (!apiKey.startsWith("AIza")) {
-      throw new Error("【金鑰格式異常】抓到的 API_KEY 不是以 AIza 開頭，請確認 Vercel 後台設定是否正確。");
-    }
-
-    // 嚴格遵守：使用具名參數初始化
-    return new GoogleGenAI({ apiKey: apiKey });
-  }
-
   async analyze(prompt: string, language: 'zh' | 'en', imageData?: string) {
-    let ai;
-    try {
-      ai = this.getAI();
-    } catch (configError: any) {
-      throw configError;
+    const apiKey = process.env.API_KEY;
+    
+    if (!apiKey || apiKey === "undefined") {
+      throw new Error("API_KEY 尚未生效。請確認 Vercel 設定並執行一次全新的 Redeploy。");
     }
 
-    // 使用最強的 Gemini 3 Pro 進行心理分析
+    // 每次請求都建立實例，確保抓到最新的環境變數
+    const ai = new GoogleGenAI({ apiKey });
     const model = 'gemini-3-pro-preview';
-    const systemInstruction = SYSTEM_INSTRUCTIONS[language];
     
     const parts: any[] = [];
     if (prompt && prompt.trim()) {
@@ -62,26 +42,28 @@ export class GeminiService {
         model,
         contents: { parts },
         config: {
-          systemInstruction,
+          systemInstruction: SYSTEM_INSTRUCTIONS[language],
           temperature: 0.8,
           thinkingConfig: { thinkingBudget: 4000 }
         }
       });
-      return response.text || "潛意識的深度難以言表，請嘗試換個方式分享。";
+      return response.text || "潛意識的深度難以言表。";
     } catch (error: any) {
-      console.error("Gemini Analysis Error:", error);
-      
-      if (error?.message?.includes('API key not found') || error?.status === 403) {
-        throw new Error("Google 拒絕了此金鑰。請確認您的 Google AI Studio 金鑰是否仍有效，或是否有帳單問題。");
+      console.error("Gemini API Error:", error);
+      // 提供更具體的錯誤提示
+      if (error?.message?.includes('API_KEY_INVALID')) {
+        throw new Error("金鑰無效，請檢查 Google AI Studio 的金鑰是否正確。");
       }
-      
-      throw new Error(error?.message || "無法連線至分析核心，請稍後再試。");
+      throw new Error(error?.message || "連線至分析核心失敗。");
     }
   }
 
   async generateSpeech(text: string, language: 'zh' | 'en', voiceName: string = 'Charon') {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey || apiKey === "undefined") return null;
+
     try {
-      const ai = this.getAI();
+      const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
         contents: [{ parts: [{ text }] }],
@@ -97,7 +79,7 @@ export class GeminiService {
 
       return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || null;
     } catch (error) {
-      console.warn("TTS 語音生成失敗。", error);
+      console.warn("TTS 語音生成失敗：", error);
       return null;
     }
   }
