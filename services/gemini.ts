@@ -8,19 +8,19 @@ export class GeminiService {
    * 這裡會嚴格檢查 Vercel 注入的環境變數。
    */
   private getAI() {
-    // 獲取 Vercel 部署時設定的環境變數
+    // 優先嘗試讀取 process.env.API_KEY
+    // 在 Vercel 的 Build step 中，這會被替換為實際的字串
     const apiKey = process.env.API_KEY;
 
-    // 檢查 1: 是否根本沒有設定環境變數
     if (!apiKey || apiKey === "undefined" || apiKey.trim() === "") {
+      // 如果這行報錯，100% 是因為沒有 Redeploy，或者變數名稱打錯
       throw new Error(
-        "【環境變數缺失】請到 Vercel 控制台 -> Settings -> Environment Variables 設定名為 API_KEY 的變數，並務必執行一次 Redeploy。"
+        "【找不到金鑰】Vercel 尚未將 API_KEY 注入。請在 Environment Variables 存檔後，回到 Deployments 分頁點擊 'Redeploy'。"
       );
     }
 
-    // 檢查 2: 格式初步校驗 (Gemini Key 通常以 AIza 開頭)
     if (!apiKey.startsWith("AIza")) {
-      throw new Error("【API Key 格式錯誤】您的 API_KEY 看起來不正確，請從 Google AI Studio 重新複製。");
+      throw new Error("【金鑰格式異常】抓到的 API_KEY 不是以 AIza 開頭，請確認 Vercel 後台設定是否正確。");
     }
 
     // 嚴格遵守：使用具名參數初始化
@@ -32,11 +32,10 @@ export class GeminiService {
     try {
       ai = this.getAI();
     } catch (configError: any) {
-      // 捕獲並拋出環境配置錯誤
       throw configError;
     }
 
-    // 使用 Gemini 3 Pro 提供深度的精神分析邏輯
+    // 使用最強的 Gemini 3 Pro 進行心理分析
     const model = 'gemini-3-pro-preview';
     const systemInstruction = SYSTEM_INSTRUCTIONS[language];
     
@@ -65,7 +64,6 @@ export class GeminiService {
         config: {
           systemInstruction,
           temperature: 0.8,
-          // 為複雜的佛洛依德理論分析保留思考空間
           thinkingConfig: { thinkingBudget: 4000 }
         }
       });
@@ -73,15 +71,8 @@ export class GeminiService {
     } catch (error: any) {
       console.error("Gemini Analysis Error:", error);
       
-      // 處理 API 端的報錯
-      if (error?.message?.includes('API key not found')) {
-        throw new Error("API Key 未在請求中正確傳遞，請檢查 Vercel 設定。");
-      }
-      if (error?.status === 403 || error?.message?.includes('403')) {
-        throw new Error("API Key 已失效或被 Google 停用 (403 Forbidden)。");
-      }
-      if (error?.message?.includes('model not found')) {
-        throw new Error("目前選用的模型 (Gemini 3 Pro) 在您的區域可能尚未開放。");
+      if (error?.message?.includes('API key not found') || error?.status === 403) {
+        throw new Error("Google 拒絕了此金鑰。請確認您的 Google AI Studio 金鑰是否仍有效，或是否有帳單問題。");
       }
       
       throw new Error(error?.message || "無法連線至分析核心，請稍後再試。");
@@ -106,7 +97,7 @@ export class GeminiService {
 
       return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || null;
     } catch (error) {
-      console.warn("TTS 語音生成失敗，這不影響文字對話。", error);
+      console.warn("TTS 語音生成失敗。", error);
       return null;
     }
   }
