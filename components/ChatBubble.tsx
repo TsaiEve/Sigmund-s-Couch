@@ -43,7 +43,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message, language }) => {
                {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
              </span>
              {isAnalyst && message.audioData && (
-               <AudioPlayer base64Data={message.audioData} />
+               <AudioPlayer base64Data={message.audioData} language={language} />
              )}
           </div>
         </div>

@@ -28,29 +28,41 @@ export const UI_STRINGS = {
   zh: {
     title: "西格蒙德的長沙發",
     subtitle: "探索無意識的深度對話",
-    placeholder: "在此分享你的夢境、情緒或聯想...",
+    placeholder: "在此分享你的夢境... (Ctrl + Enter 傳送)",
     send: "傳送",
-    voice: "語音播放",
+    voice: "聆聽分析",
+    stopVoice: "停止播放",
     image: "上傳圖片",
     analyzing: "分析中...",
     empty: "這裡是安靜的診覽室。請隨意分享任何流經你腦海的思緒...",
     switchLang: "English",
     voiceInput: "語音輸入",
     listening: "聆聽中...",
-    voiceError: "語音辨識不支援此瀏覽器"
+    voiceError: "語音辨識不支援此瀏覽器",
+    voiceSelect: "選擇導師聲線"
   },
   en: {
     title: "Sigmund's Couch",
     subtitle: "Deep Dialogues with the Unconscious",
-    placeholder: "Share your dreams, feelings, or associations...",
+    placeholder: "Share your dreams... (Ctrl + Enter to send)",
     send: "Send",
-    voice: "Play Voice",
+    voice: "Listen to Analysis",
+    stopVoice: "Stop Playing",
     image: "Upload Image",
     analyzing: "Analyzing...",
     empty: "The consulting room is quiet. Feel free to share whatever thoughts flow through your mind...",
     switchLang: "繁體中文",
     voiceInput: "Voice Input",
     listening: "Listening...",
-    voiceError: "Speech recognition not supported in this browser"
+    voiceError: "Speech recognition not supported in this browser",
+    voiceSelect: "Select Voice Tone"
   }
 };
+
+export const VOICE_OPTIONS = [
+  { id: 'Charon', label_zh: '沉穩中年 (男)', label_en: 'Deep Middle-aged (Male)' },
+  { id: 'Fenrir', label_zh: '嚴謹分析 (男)', label_en: 'Analytical (Male)' },
+  { id: 'Kore', label_zh: '溫柔共感 (女)', label_en: 'Gentle Empathetic (Female)' },
+  { id: 'Zephyr', label_zh: '優雅細膩 (女)', label_en: 'Elegant (Female)' },
+  { id: 'Puck', label_zh: '年輕活力 (男)', label_en: 'Youthful (Male)' }
+];

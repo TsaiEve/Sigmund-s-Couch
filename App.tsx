@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Message, Role } from './types';
-import { UI_STRINGS } from './constants';
+import { UI_STRINGS, VOICE_OPTIONS } from './constants';
 import { geminiService } from './services/gemini';
 import ChatBubble from './components/ChatBubble';
 
@@ -9,9 +9,12 @@ const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [language, setLanguage] = useState<'zh' | 'en'>('zh');
+  const [selectedVoice, setSelectedVoice] = useState('Charon');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [showVoiceSelect, setShowVoiceSelect] = useState(false);
+  
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -101,8 +104,8 @@ const App: React.FC = () => {
     try {
       const analysis = await geminiService.analyze(input, language, userMessage.imageData);
       
-      // Generate audio for the response
-      const audioData = await geminiService.generateSpeech(analysis, language);
+      // Generate audio with selected voice
+      const audioData = await geminiService.generateSpeech(analysis, language, selectedVoice);
 
       const analystMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -127,28 +130,65 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen max-w-5xl mx-auto bg-white shadow-2xl overflow-hidden border-x border-sky-100">
       {/* Header */}
-      <header className="px-6 py-5 border-b border-sky-100 flex items-center justify-between bg-white/90 backdrop-blur-lg sticky top-0 z-10 shadow-sm">
+      <header className="px-6 py-4 border-b border-sky-100 flex items-center justify-between bg-white/90 backdrop-blur-lg sticky top-0 z-20 shadow-sm">
         <div className="flex items-center space-x-4">
-          <div className="w-12 h-12 rounded-2xl bg-sky-500 flex items-center justify-center text-white shadow-lg shadow-sky-200 rotate-3 transform transition-transform hover:rotate-0 cursor-default">
-            <i className="fa-solid fa-couch text-xl"></i>
+          <div className="w-10 h-10 rounded-2xl bg-sky-500 flex items-center justify-center text-white shadow-lg shadow-sky-200 rotate-3 transform transition-transform hover:rotate-0 cursor-default">
+            <i className="fa-solid fa-couch text-lg"></i>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-800 tracking-tight serif-font">{strings.title}</h1>
-            <p className="text-[11px] font-semibold text-sky-400 uppercase tracking-widest">{strings.subtitle}</p>
+            <h1 className="text-xl font-bold text-slate-800 tracking-tight serif-font leading-tight">{strings.title}</h1>
+            <p className="text-[10px] font-semibold text-sky-400 uppercase tracking-widest leading-tight">{strings.subtitle}</p>
           </div>
         </div>
-        <button 
-          onClick={toggleLanguage}
-          className="text-xs font-bold px-5 py-2.5 border-2 border-sky-100 text-sky-600 rounded-full hover:bg-sky-50 hover:border-sky-200 transition-all active:scale-95"
-        >
-          {strings.switchLang}
-        </button>
+        
+        <div className="flex items-center space-x-3">
+          {/* Voice Selector Dropdown */}
+          <div className="relative">
+            <button 
+              onClick={() => setShowVoiceSelect(!showVoiceSelect)}
+              className="flex items-center space-x-2 text-xs font-bold px-4 py-2 bg-sky-50 text-sky-600 rounded-full hover:bg-sky-100 transition-all border border-sky-100"
+            >
+              <i className="fa-solid fa-microphone-lines text-[10px]"></i>
+              <span>{VOICE_OPTIONS.find(v => v.id === selectedVoice)?.[`label_${language}`]}</span>
+              <i className={`fa-solid fa-chevron-down text-[10px] transition-transform ${showVoiceSelect ? 'rotate-180' : ''}`}></i>
+            </button>
+            
+            {showVoiceSelect && (
+              <div className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-xl border border-sky-50 overflow-hidden animate-in fade-in zoom-in duration-200 z-30">
+                <div className="p-2 bg-sky-50/50 text-[10px] font-bold text-sky-400 uppercase tracking-wider px-4 py-2 border-b border-sky-50">
+                  {strings.voiceSelect}
+                </div>
+                {VOICE_OPTIONS.map((voice) => (
+                  <button
+                    key={voice.id}
+                    onClick={() => {
+                      setSelectedVoice(voice.id);
+                      setShowVoiceSelect(false);
+                    }}
+                    className={`w-full text-left px-4 py-3 text-sm transition-colors hover:bg-sky-50 flex items-center justify-between ${selectedVoice === voice.id ? 'text-sky-600 font-bold bg-sky-50/30' : 'text-slate-600'}`}
+                  >
+                    {voice[`label_${language}`]}
+                    {selectedVoice === voice.id && <i className="fa-solid fa-check text-[10px]"></i>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button 
+            onClick={toggleLanguage}
+            className="text-xs font-bold px-4 py-2 border-2 border-sky-100 text-sky-600 rounded-full hover:bg-sky-50 hover:border-sky-200 transition-all active:scale-95"
+          >
+            {strings.switchLang}
+          </button>
+        </div>
       </header>
 
       {/* Messages Area */}
       <main 
         ref={scrollRef}
         className="flex-1 overflow-y-auto p-8 space-y-4 bg-gradient-to-b from-sky-50/20 to-white"
+        onClick={() => setShowVoiceSelect(false)}
       >
         {messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center opacity-40 py-20 animate-fade-in">
@@ -223,7 +263,8 @@ const App: React.FC = () => {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                // Modified to Ctrl + Enter (or Cmd + Enter on Mac)
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                   e.preventDefault();
                   handleSendMessage();
                 }

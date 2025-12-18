@@ -10,7 +10,6 @@ export class GeminiService {
   }
 
   async analyze(prompt: string, language: 'zh' | 'en', imageData?: string) {
-    // Switching to gemini-3-flash-preview for much faster analysis
     const model = 'gemini-3-flash-preview';
     const systemInstruction = SYSTEM_INSTRUCTIONS[language];
     
@@ -37,15 +36,22 @@ export class GeminiService {
     return response.text;
   }
 
-  async generateSpeech(text: string, language: 'zh' | 'en') {
-    // Using gemini-2.5-flash-preview-tts for high quality voice
-    // Selection of voice based on language
-    const voiceName = language === 'zh' ? 'Kore' : 'Puck'; 
+  async generateSpeech(text: string, language: 'zh' | 'en', voiceName: string = 'Charon') {
+    let personaPrompt = "";
+    
+    if (language === 'zh') {
+      const malePersona = "穩重、睿智、帶有親切台灣口音的中年男性心理分析師";
+      const femalePersona = "溫柔、專業、富有同理心的女性心理分析師";
+      const persona = (voiceName === 'Charon' || voiceName === 'Fenrir' || voiceName === 'Puck') ? malePersona : femalePersona;
+      personaPrompt = `請用一位「${persona}」的語氣，低沈且溫和地朗讀這段話：${text}`;
+    } else {
+      personaPrompt = `Read this as a wise psychoanalyst with a calm and professional voice: ${text}`;
+    }
     
     try {
       const response = await this.ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `Read this with a calm, professional, and slightly academic tone: ${text}` }] }],
+        contents: [{ parts: [{ text: personaPrompt }] }],
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
