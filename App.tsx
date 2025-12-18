@@ -14,12 +14,36 @@ const App: React.FC = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [showVoiceSelect, setShowVoiceSelect] = useState(false);
+  const [isKeyReady, setIsKeyReady] = useState(false);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
 
   const strings = UI_STRINGS[language];
+
+  // 檢查金鑰狀態
+  useEffect(() => {
+    const checkKey = async () => {
+      if (window.aistudio && typeof window.aistudio.hasSelectedApiKey === 'function') {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        setIsKeyReady(hasKey);
+      } else {
+        // 如果不在特定環境內，則假設 process.env.API_KEY 已由 Vercel 注入
+        setIsKeyReady(!!process.env.API_KEY);
+      }
+    };
+    checkKey();
+  }, []);
+
+  const handleOpenKeyPicker = async () => {
+    if (window.aistudio && typeof window.aistudio.openSelectKey === 'function') {
+      await window.aistudio.openSelectKey();
+      setIsKeyReady(true); // 根據規範，觸發後即視為成功
+    } else {
+      alert("請確認您已在 Vercel 設定 API_KEY 並重新部署。");
+    }
+  };
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -96,8 +120,42 @@ const App: React.FC = () => {
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
+
+      // 如果是金鑰問題，重置狀態讓使用者重新點選
+      if (error.message.includes('not found')) {
+        setIsKeyReady(false);
+      }
     }
   };
+
+  // 如果金鑰沒準備好，顯示初始化畫面
+  if (!isKeyReady) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center bg-sky-50 p-6 text-center">
+        <div className="w-20 h-20 rounded-3xl bg-sky-500 flex items-center justify-center text-white shadow-2xl mb-8 animate-pulse">
+          <i className="fa-solid fa-couch text-3xl"></i>
+        </div>
+        <h2 className="text-2xl font-bold text-slate-800 serif-font mb-4">歡迎來到佛洛依德的診覽室</h2>
+        <p className="text-slate-500 mb-8 max-w-sm text-sm leading-relaxed">
+          為了啟動深度心理分析，我們需要與您的 Google AI Studio 資源建立聯繫。請點擊下方按鈕以初始化診間。
+        </p>
+        <button 
+          onClick={handleOpenKeyPicker}
+          className="px-8 py-4 bg-sky-500 text-white rounded-2xl font-bold shadow-xl hover:bg-sky-600 transition-all active:scale-95"
+        >
+          初始化分析核心
+        </button>
+        <a 
+          href="https://ai.google.dev/gemini-api/docs/billing" 
+          target="_blank" 
+          rel="noreferrer"
+          className="mt-6 text-[10px] text-sky-400 underline tracking-widest uppercase"
+        >
+          查看計費說明與說明文件
+        </a>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full max-w-5xl mx-auto bg-white shadow-2xl overflow-hidden md:border-x border-sky-100">

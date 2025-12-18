@@ -4,19 +4,12 @@ import { SYSTEM_INSTRUCTIONS } from "../constants";
 
 export class GeminiService {
   /**
-   * 根據規範，我們直接使用 process.env.API_KEY。
-   * 如果在部署後仍報錯，請確認 Vercel 的 Environment Variables 頁面中，
-   * 變數名稱是否完全等於 API_KEY（全大寫，無空格）。
+   * 根據規範：每次呼叫前才建立 GoogleGenAI 實例。
+   * 這樣可以確保抓到環境中最即時的 process.env.API_KEY。
    */
   async analyze(prompt: string, language: 'zh' | 'en', imageData?: string) {
-    const apiKey = process.env.API_KEY;
-    
-    if (!apiKey || apiKey === "undefined") {
-      throw new Error("API_KEY 尚未生效。請確認 Vercel 設定並執行一次全新的 Redeploy。");
-    }
-
-    // 每次請求都建立實例，確保抓到最新的環境變數
-    const ai = new GoogleGenAI({ apiKey });
+    // 建立新實體
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const model = 'gemini-3-pro-preview';
     
     const parts: any[] = [];
@@ -50,20 +43,17 @@ export class GeminiService {
       return response.text || "潛意識的深度難以言表。";
     } catch (error: any) {
       console.error("Gemini API Error:", error);
-      // 提供更具體的錯誤提示
-      if (error?.message?.includes('API_KEY_INVALID')) {
-        throw new Error("金鑰無效，請檢查 Google AI Studio 的金鑰是否正確。");
+      // 如果發生 404/NotFound，可能是環境尚未同步金鑰
+      if (error?.message?.includes('not found') || error?.status === 404) {
+        throw new Error("授權連結尚未完成。請點擊頁面上的「初始化診間」按鈕。");
       }
       throw new Error(error?.message || "連線至分析核心失敗。");
     }
   }
 
   async generateSpeech(text: string, language: 'zh' | 'en', voiceName: string = 'Charon') {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey || apiKey === "undefined") return null;
-
     try {
-      const ai = new GoogleGenAI({ apiKey });
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
         contents: [{ parts: [{ text }] }],
