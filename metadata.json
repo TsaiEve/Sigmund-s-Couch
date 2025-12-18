@@ -1,0 +1,8 @@
+{
+  "name": "Sigmund's Couch - Psychoanalytic AI",
+  "description": "An AI-powered psychoanalytic therapist based on Freudian theory, offering deep insights into the unconscious. Features include image interpretation, multi-language support (English/Traditional Chinese), and high-quality voice synthesis for an empathetic experience.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
