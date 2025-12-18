@@ -21,6 +21,7 @@ const App: React.FC = () => {
 
   const strings = UI_STRINGS[language];
 
+  // 初始化語音辨識
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
@@ -41,69 +42,76 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    setTimeout(scrollToBottom, 50);
+    // 延遲滾動確保內容已渲染
+    const timer = setTimeout(scrollToBottom, 100);
+    return () => clearTimeout(timer);
   }, [messages, isAnalyzing]);
 
   const handleSendMessage = async () => {
     if ((!input.trim() && !previewImage) || isAnalyzing) return;
 
+    const currentInput = input;
+    const currentImg = previewImage;
+
     const userMessage: Message = {
       id: `u-${Date.now()}`,
       role: 'user',
-      content: input,
+      content: currentInput || (currentImg ? "[圖片訊息]" : ""),
       timestamp: new Date(),
-      imageData: previewImage || undefined
+      imageData: currentImg || undefined
     };
 
     setMessages(prev => [...prev, userMessage]);
-    const currentInput = input;
-    const currentImg = previewImage;
     setInput('');
     setPreviewImage(null);
     setIsAnalyzing(true);
 
     try {
-      // 1. 文字分析
-      const analysisText = await geminiService.analyze(currentInput, language, currentImg || undefined);
+      // 1. 取得文字分析
+      const resultText = await geminiService.analyze(currentInput, language, currentImg || undefined);
       
-      // 2. 先建立對話框，不帶音訊
       const analystMessage: Message = {
         id: `a-${Date.now()}`,
         role: 'analyst',
-        content: analysisText,
+        content: resultText,
         timestamp: new Date(),
       };
+      
+      // 立即顯示文字回應
       setMessages(prev => [...prev, analystMessage]);
-      setIsAnalyzing(false); // 文字出來後就可以停止 Loading 狀態
+      setIsAnalyzing(false);
 
-      // 3. 非同步嘗試生成音訊
-      geminiService.generateSpeech(analysisText, language, selectedVoice).then(audio => {
-        if (audio) {
-          setMessages(prev => prev.map(m => m.id === analystMessage.id ? { ...m, audioData: audio } : m));
+      // 2. 背景生成音訊（不阻塞文字顯示）
+      geminiService.generateSpeech(resultText, language, selectedVoice).then(audioData => {
+        if (audioData) {
+          setMessages(prev => prev.map(m => 
+            m.id === analystMessage.id ? { ...m, audioData } : m
+          ));
         }
       });
 
     } catch (error: any) {
-      console.error("Chat Error:", error);
+      console.error("Analysis Error:", error);
+      setIsAnalyzing(false);
+      
       const errorMessage: Message = {
         id: `err-${Date.now()}`,
         role: 'analyst',
-        content: `分析過程中斷了：${error.message || '未知錯誤'}。請檢查網路或 API 設定。`,
+        content: `系統發生阻抗：${error.message}。請確認環境變數 API_KEY 是否正確配置。`,
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
-      setIsAnalyzing(false);
     }
   };
 
   return (
     <div className="flex flex-col h-full max-w-5xl mx-auto bg-white shadow-2xl overflow-hidden md:border-x border-sky-100">
-      <header className="px-6 py-4 border-b border-sky-100 flex items-center justify-between bg-white/95 backdrop-blur-md sticky top-0 z-30">
+      <header className="px-6 py-4 border-b border-sky-100 flex items-center justify-between bg-white/95 backdrop-blur-md sticky top-0 z-30 shadow-sm">
         <div className="flex items-center space-x-4">
           <div className="w-10 h-10 rounded-xl bg-sky-500 flex items-center justify-center text-white shadow-lg">
             <i className="fa-solid fa-couch"></i>
           </div>
-          <div>
+          <div className="hidden sm:block">
             <h1 className="text-xl font-bold text-slate-800 serif-font leading-tight">{strings.title}</h1>
             <p className="text-[9px] font-bold text-sky-400 uppercase tracking-widest">{strings.subtitle}</p>
           </div>
@@ -113,7 +121,7 @@ const App: React.FC = () => {
           <div className="relative">
             <button 
               onClick={() => setShowVoiceSelect(!showVoiceSelect)}
-              className="flex items-center space-x-2 text-[11px] font-bold px-3 py-2 bg-sky-50 text-sky-600 rounded-full border border-sky-100"
+              className="flex items-center space-x-2 text-[11px] font-bold px-3 py-2 bg-sky-50 text-sky-600 rounded-full border border-sky-100 transition-colors hover:bg-sky-100"
             >
               <i className="fa-solid fa-microphone-lines text-[10px]"></i>
               <span>{VOICE_OPTIONS.find(v => v.id === selectedVoice)?.[`label_${language}`]}</span>
@@ -134,7 +142,7 @@ const App: React.FC = () => {
           </div>
           <button 
             onClick={() => setLanguage(prev => prev === 'zh' ? 'en' : 'zh')}
-            className="text-[11px] font-bold px-3 py-2 border border-sky-100 text-sky-600 rounded-full hover:bg-sky-50"
+            className="text-[11px] font-bold px-3 py-2 border border-sky-100 text-sky-600 rounded-full hover:bg-sky-50 transition-all"
           >
             {strings.switchLang}
           </button>
@@ -143,12 +151,12 @@ const App: React.FC = () => {
 
       <main 
         ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 bg-slate-50/30"
+        className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 bg-slate-50/20"
         onClick={() => setShowVoiceSelect(false)}
       >
         {messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center opacity-30 py-20">
-            <i className="fa-solid fa-feather-pointed text-4xl text-sky-300 mb-4"></i>
+            <i className="fa-solid fa-feather-pointed text-4xl text-sky-300 mb-4 animate-bounce"></i>
             <p className="max-w-xs serif-font text-lg italic">{strings.empty}</p>
           </div>
         )}
@@ -156,28 +164,28 @@ const App: React.FC = () => {
           <ChatBubble key={msg.id} message={msg} language={language} />
         ))}
         {isAnalyzing && (
-          <div className="flex items-center space-x-3 text-sky-400 text-xs font-bold animate-pulse ml-2">
-            <div className="flex space-x-1">
-              <span className="w-1.5 h-1.5 bg-sky-400 rounded-full"></span>
-              <span className="w-1.5 h-1.5 bg-sky-400 rounded-full"></span>
-              <span className="w-1.5 h-1.5 bg-sky-400 rounded-full"></span>
+          <div className="flex items-center space-x-3 text-sky-500 text-xs font-bold ml-2 animate-pulse">
+            <div className="flex space-x-1.5">
+              <span className="w-2 h-2 bg-sky-500 rounded-full"></span>
+              <span className="w-2 h-2 bg-sky-500 rounded-full"></span>
+              <span className="w-2 h-2 bg-sky-500 rounded-full"></span>
             </div>
-            <span>{strings.analyzing}</span>
+            <span className="tracking-widest uppercase">{strings.analyzing}</span>
           </div>
         )}
       </main>
 
       <footer className="p-4 md:p-6 border-t border-sky-50 bg-white">
         {previewImage && (
-          <div className="mb-4 relative inline-block">
-            <img src={previewImage} alt="Preview" className="h-20 w-20 object-cover rounded-lg border-2 border-sky-100 shadow-sm" />
-            <button onClick={() => setPreviewImage(null)} className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] shadow-lg border border-white">
+          <div className="mb-4 relative inline-block animate-fade-in">
+            <img src={previewImage} alt="Preview" className="h-20 w-20 object-cover rounded-xl border-2 border-sky-100 shadow-md" />
+            <button onClick={() => setPreviewImage(null)} className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-[10px] shadow-lg border-2 border-white hover:bg-rose-600 transition-colors">
               <i className="fa-solid fa-xmark"></i>
             </button>
           </div>
         )}
         
-        <div className="flex items-end space-x-2 bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/50 focus-within:bg-white focus-within:border-sky-300 transition-all">
+        <div className="flex items-end space-x-2 bg-slate-100/60 p-2 rounded-2xl border border-slate-200/50 focus-within:bg-white focus-within:border-sky-300 focus-within:shadow-lg focus-within:shadow-sky-50 transition-all">
           <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={(e) => {
              const file = e.target.files?.[0];
              if (file) {
@@ -187,14 +195,14 @@ const App: React.FC = () => {
              }
           }} />
           
-          <div className="flex">
-            <button onClick={() => fileInputRef.current?.click()} className="w-10 h-10 text-slate-400 hover:text-sky-500 rounded-xl flex items-center justify-center"><i className="fa-solid fa-camera"></i></button>
+          <div className="flex mb-1">
+            <button onClick={() => fileInputRef.current?.click()} className="w-10 h-10 text-slate-400 hover:text-sky-500 transition-colors flex items-center justify-center rounded-xl hover:bg-sky-50" title={strings.image}><i className="fa-solid fa-camera"></i></button>
             <button onClick={() => {
               if (recognitionRef.current) {
                 if (isRecording) recognitionRef.current.stop();
                 else { recognitionRef.current.lang = language === 'zh' ? 'zh-TW' : 'en-US'; recognitionRef.current.start(); setIsRecording(true); }
               }
-            }} className={`w-10 h-10 rounded-xl flex items-center justify-center ${isRecording ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`}><i className="fa-solid fa-microphone"></i></button>
+            }} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${isRecording ? 'text-rose-500 bg-rose-50 animate-pulse' : 'text-slate-400 hover:text-sky-500 hover:bg-sky-50'}`} title={strings.voiceInput}><i className="fa-solid fa-microphone"></i></button>
           </div>
           
           <textarea
@@ -203,19 +211,19 @@ const App: React.FC = () => {
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSendMessage(); } }}
             placeholder={strings.placeholder}
             rows={1}
-            className="flex-1 bg-transparent border-none py-2 px-2 focus:ring-0 text-sm md:text-base outline-none resize-none"
-            style={{ maxHeight: '120px' }}
+            className="flex-1 bg-transparent border-none py-2.5 px-2 focus:ring-0 text-sm md:text-base outline-none resize-none placeholder:text-slate-400"
+            style={{ maxHeight: '150px' }}
           />
 
           <button 
             onClick={handleSendMessage}
             disabled={(!input.trim() && !previewImage) || isAnalyzing}
-            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${(!input.trim() && !previewImage) || isAnalyzing ? 'bg-slate-200 text-slate-400' : 'bg-sky-500 text-white shadow-md hover:bg-sky-600'}`}
+            className={`mb-1 w-10 h-10 rounded-xl flex items-center justify-center transition-all ${(!input.trim() && !previewImage) || isAnalyzing ? 'bg-slate-200 text-slate-400' : 'bg-sky-500 text-white shadow-lg hover:bg-sky-600 hover:-translate-y-0.5'}`}
           >
             <i className="fa-solid fa-paper-plane text-sm"></i>
           </button>
         </div>
-        <p className="text-[10px] text-center text-slate-300 mt-4 font-bold tracking-widest opacity-60">MAKE THE UNCONSCIOUS CONSCIOUS</p>
+        <p className="text-[10px] text-center text-slate-300 mt-5 font-bold tracking-[0.3em] opacity-60">"THE UNEXAMINED LIFE IS NOT WORTH LIVING"</p>
       </footer>
     </div>
   );

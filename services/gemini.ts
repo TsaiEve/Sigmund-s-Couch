@@ -3,8 +3,24 @@ import { GoogleGenAI, Modality } from "@google/genai";
 import { SYSTEM_INSTRUCTIONS } from "../constants";
 
 export class GeminiService {
+  private getApiKey(): string {
+    // 安全地存取 process.env，避免在瀏覽器中報錯
+    try {
+      if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
+        return process.env.API_KEY;
+      }
+    } catch (e) {
+      console.warn("Process env is not accessible.");
+    }
+    return '';
+  }
+
   private getAI() {
-    return new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+    const apiKey = this.getApiKey();
+    if (!apiKey) {
+      throw new Error("API Key 尚未設定。請在環境變數中加入 API_KEY。");
+    }
+    return new GoogleGenAI({ apiKey });
   }
 
   async analyze(prompt: string, language: 'zh' | 'en', imageData?: string) {
@@ -12,7 +28,11 @@ export class GeminiService {
     const model = 'gemini-3-flash-preview';
     const systemInstruction = SYSTEM_INSTRUCTIONS[language];
     
-    const parts: any[] = [{ text: prompt || (imageData ? "請分析這張圖片反映的潛意識象徵。" : "...") }];
+    const parts: any[] = [];
+    if (prompt && prompt.trim()) {
+      parts.push({ text: prompt });
+    }
+    
     if (imageData) {
       parts.push({
         inlineData: {
@@ -22,35 +42,40 @@ export class GeminiService {
       });
     }
 
+    // 如果完全沒有內容，給予一個預設提示
+    if (parts.length === 0) {
+      parts.push({ text: "請以分析師的身份與我打聲招呼。" });
+    }
+
     try {
       const response = await ai.models.generateContent({
         model,
-        contents: { parts: parts.length > 0 ? parts : [{ text: "Hello" }] },
+        contents: { parts },
         config: {
           systemInstruction,
           temperature: 0.8,
         }
       });
-      return response.text || "抱歉，分析過程中出現了無意識的阻抗，請再試一次。";
+      return response.text || "潛意識的深度難以言表，請嘗試換個方式分享你的思緒。";
     } catch (error: any) {
       console.error("Gemini Analysis Error:", error);
-      throw new Error(error?.message || "無法連線至分析核心");
+      throw new Error(error?.message || "無法連線至分析核心，請檢查 API Key 或網路連線。");
     }
   }
 
   async generateSpeech(text: string, language: 'zh' | 'en', voiceName: string = 'Charon') {
-    const ai = this.getAI();
-    let personaPrompt = "";
-    
-    if (language === 'zh') {
-      const isMale = ['Charon', 'Fenrir', 'Puck'].includes(voiceName);
-      const persona = isMale ? "穩重、睿智、中年台灣男性心理分析師" : "溫柔、專業、細膩的女性心理分析師";
-      personaPrompt = `請用一位「${persona}」的語氣，低沈溫和地朗讀：${text}`;
-    } else {
-      personaPrompt = `Wise psychoanalyst voice: ${text}`;
-    }
-    
     try {
+      const ai = this.getAI();
+      let personaPrompt = "";
+      
+      if (language === 'zh') {
+        const isMale = ['Charon', 'Fenrir', 'Puck'].includes(voiceName);
+        const persona = isMale ? "穩重、睿智的中年台灣男性心理分析師" : "溫柔、專業、細膩的女性心理分析師";
+        personaPrompt = `請用一位「${persona}」的語氣，低沈且溫和地朗讀這段話：${text}`;
+      } else {
+        personaPrompt = `Professional psychoanalyst voice: ${text}`;
+      }
+      
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
         contents: [{ parts: [{ text: personaPrompt }] }],
@@ -66,7 +91,7 @@ export class GeminiService {
 
       return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data || null;
     } catch (error) {
-      console.error("Speech generation failed:", error);
+      console.warn("Speech generation failed, skipping audio.", error);
       return null;
     }
   }
